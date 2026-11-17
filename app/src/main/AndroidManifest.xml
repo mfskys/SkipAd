@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      ⚠️ 刻意**不申请** INTERNET 权限。
+      规则全部内嵌在 adskip/BuiltinAdTasks.kt 里，应用没有任何联网行为 ——
+      这是在系统无障碍说明里敢写"不会收集或上传任何信息"的前提。
+      任何时候要加网络能力，必须同步改掉 strings.xml 里的那段描述。
+    -->
+
+    <!--
+      自动化期间挂前台服务所需的权限。
+
+      ⚠️ 为什么**必须**要有它：跑自动化时本应用会长时间待在后台
+         （它自己去打开了系统设置 / 下载管理等页面），
+         厂商 ROM（MIUI / HyperOS 等）会把这样的进程判为"可冻结"，
+         然后连整个 uid 一起冻住。
+
+         被冻结的表现是**所有线程停止调度**：
+         日志停在一行、界面完全不动，连本应用自己的看门狗和心跳都不再触发。
+         实测证据（cgroup v2）：
+           /sys/fs/cgroup/apps/uid_xxx/cgroup.freeze = 1   ← uid 级被冻结
+           /sys/fs/cgroup/apps/uid_xxx/pid_xxx/cgroup.freeze = 0
+         而进程状态仍是 S、没有 SIGSTOP、CPU 0% ——
+         冻结既不改线程状态也不发信号，**从进程内部完全无法自证**。
+
+         挂上前台服务就有了"前台组件"，系统不再把它当可冻结对象。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!--
+      自动化期间保活用的两件套（配合 SkipAdAutomationService）：
+
+      · FOREGROUND_SERVICE 已在上方申请 —— 实测**单靠它挡不住** MIUI 的 uid 级冻结
+        （前台服务确实起来了：`isForeground=true`，但 `cgroup.freeze` 仍是 1）。
+      · SYSTEM_ALERT_WINDOW：自动化期间挂一个 **1×1 像素的透明悬浮窗**。
+        厂商的冻结判据基本是"这个应用还有没有可见窗口"，一个 overlay 就能满足它。
+      · WAKE_LOCK：`PARTIAL_WAKE_LOCK`，让 CPU 在息屏/低功耗下也保持可用。
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+      ⚠️ **刻意不申请 `POST_NOTIFICATIONS`**。
+
+      `SkipAdAutomationService` 是前台服务，`startForeground` 在 Android 12+ 必须带一个
+      通知对象（不带直接抛异常），但**通知显示不显示是另一回事**：没有这个权限时
+      它只是不显示，服务照样是前台组件、照样能挡住厂商冻结。
+
+      保活交给悬浮窗（`SYSTEM_ALERT_WINDOW`），"现在需要你做什么"由悬浮窗上的
+      文字直接说 —— 比一条常驻通知直观，也少一次权限弹窗。
+    -->
+
+
+    <!--
+      「安装未知应用」—— 只有「应用包管理组件 · 资源推荐」那一项需要它。
+
+      ⚠️ 这个声明**必须有**，哪怕只是查询状态：`PackageManager.canRequestPackageInstalls()`
+         在没声明时直接抛 `SecurityException`（实测：设置页一进去就崩，
+         日志 `Need to declare android.permission.REQUEST_INSTALL_PACKAGES to call this api`）。
+
+      ⚠️ 声明它**不等于**已授权 —— 用户仍要在系统里手动开启。
+         设置页的「允许安装应用」条目就是那个入口。
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
+      ⚠️ **软件包可见性** —— 这个声明是本应用能正确判断"某个应用装没装"的前提。
+
+      Android 11（API 30）起，应用默认**看不见**别的包：凡是没在本文件里
+      "声明过"的包，`getApplicationInfo()` / `getInstalledPackages()` /
+      `queryIntentActivities()` 一律**表现成"不存在"**。
+
+      `QUERY_ALL_PACKAGES` 是普通权限，**声明即生效**、不需要运行时请求，
+      它解除的就是这条限制。
+
+      ## 为什么非要它不可
+
+      本应用有一项核心判断：**某个预装应用 / 系统组件在这台机器上还在不在**。
+      天气、日历、画报、应用商店都可能被用户卸载，脚本要在开跑前认出这些项
+      并如实跳过（见 `usableAdTasks`）。
+
+      而这条判断走的就是 `getApplicationInfo()` —— **正撞在可见性过滤上**：
+      查不到的包抛 `NameNotFoundException`，与我们想识别的"真的没装"
+      **完全无法区分**。
+
+      ## 实测踩到的后果
+
+      没有这个声明时，清单里大半任务被**误判成"未安装"直接跳过**：
+      主页进度环显示 `3/3`，而用户其实一项都没少装。
+      更糟的是它**不报任何错** —— 看起来就像那些应用真的不在。
+
+      ## 为什么不用 `<queries>` 逐包声明
+
+      那要求把每个任务用到的包名**再维护一份**到本文件里，而且**跨文件**。
+      漏写一个不会编译报错，只会让那一项被静默跳过 —— 正是上面那个事故的成因。
+
+      包名其实已经从任务步骤里自动推导出来了（见 `AdTask.requiredPackages`），
+      在这里再维护一份，等于把同一个事实记两遍。
+
+      ## 关于 Google Play
+
+      这个权限在上架应用商店时需要申报用途、且较难通过。
+      本应用是**侧载工具**（不上架），而它的全部工作就是操作本机预装组件 ——
+      用途与权限完全对口。
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!--
+      Shizuku：借 shell 身份执行命令。
+
+      用途**只有一处**：「无障碍服务」那一行点下去时，如果本机装了并运行着 Shizuku，
+      就直接用 `settings put secure enabled_accessibility_services …` 把本应用的无障碍
+      打开 —— 省掉"跳到系统设置 → 无障碍 → 找到本应用 → 拨开关 → 切回来"那一串。
+      没装 / 没运行 Shizuku 时，这条路径**原样降级**为打开系统设置页（见
+      ui/design/component/ShizukuAccessibilityOpener.kt）。
+
+      ⚠️ 这条权限是**普通权限、声明即生效**，而且只在"本机装了 Shizuku"时才有意义 ——
+         没有 Shizuku 时它什么也不做，不会弹任何框。
+    -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SkipAd">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SkipAd"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          广告跳过 · 无障碍服务
+
+          · exported="true"：无障碍服务**必须**导出，否则系统无法绑定它
+            （绑定受 BIND_ACCESSIBILITY_SERVICE 这个系统签名级权限保护，
+             普通应用即使看到这个组件也绑不上）。
+          · 配置在 res/xml/ad_skip_accessibility_config.xml，每一项的用途见该文件注释。
+          · 组件全名 = `应用包名 + 这个类全名`，由 AdSkipPermission.serviceComponent(context)
+            拼出来（包名取 applicationId，所以 debug 变体带 `.debug` 后缀也自动正确）。
+            这里改名就必须同步改那里的 SERVICE_CLASS 常量，
+            否则"无障碍是否已开启"的状态查询会永远返回 false。
+        -->
+        <service
+            android:name=".adskip.AdSkipAccessibilityService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ad_skip_accessibility_config" />
+        </service>
+
+        <!--
+          自动化期间的**前台服务** —— 唯一作用是让系统不要冻结本进程。
+
+          会话开始（用户点「开始处理」）时启动，会话结束（完成 / 失败 / 停止）时停止。
+          它不监听任何事件、不做任何操作，只是一个"我还在干活"的声明。
+
+          类型用 Android 14 的 `specialUse`：本服务不属于任何预定义类型
+          （不是音乐、导航、定位…），官方要求这种情形用 `specialUse` 并声明用途 ——
+          见下面的 <property>。漏了它会在 Android 14+ 上抛
+          MissingForegroundServiceTypeException。
+        -->
+        <service
+            android:name=".adskip.SkipAdAutomationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="按用户指令自动切换系统设置中的广告开关" />
+        </service>
+
+        <!--
+          Shizuku 的 binder 传递入口（官方要求原样声明）。
+
+          · `authorities` 必须是 `${applicationId}.shizuku` —— Shizuku 应用按这个
+            固定规则来查我们（写成别的名字就永远拿不到 binder，且**不报错**）。
+          · `permission` 用系统签名级的 `INTERACT_ACROSS_USERS_FULL`：只有系统
+            （Shizuku 本体）能访问它。
+          · ⚠️ 少了这段，`Shizuku.pingBinder()` 会一直返回 false，
+            表现为"明明装了 Shizuku，应用却说没有"。
+        -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+    </application>
+
+</manifest>

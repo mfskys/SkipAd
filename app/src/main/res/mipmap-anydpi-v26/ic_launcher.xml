@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  启动器图标（adaptive icon，API 26+）。本项目 minSdk 33 → **这份是唯一生效的一份**
+  （旧的 `mipmap-anydpi/` 与五档密度里的模板 webp 已删除，那是 AS 模板残留、永远不会被读到）。
+
+  ⚠️ 三层指向**同一张字标图**：
+     `mipmap-xxxhdpi/ic_launcher_art.png`（432×432，白底「SkipAd」字标）。
+
+  ⚠️ 这套做法的**已知代价**（选择它时是知情的，别当成 bug）：
+     · 字标是 3.4:1 的横条，实际只占画布高度的约 27% —— 桌面 48px 下字会偏小；
+     · `<monochrome>` 用的是**不透明白底**图 → 系统「主题图标」（Android 13+ / HyperOS 长按变色）
+       会把整块渲染成纯色（alpha 全不透明，形状=整个方块）；
+     · 背景层与前景层内容重复（前景被裁进中央 72dp 安全区后，盖在背景上）。
+
+  ⚠️ 若要改成规范三层（紫底 `#6750A4` + 放大的白色 Sk + 透明剪影做单色层），
+     只需替换下面三行的 drawable 指向 —— 那两版素材当时已生成好。
+--><adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_art" />
+    <foreground android:drawable="@mipmap/ic_launcher_art" />
+    <monochrome android:drawable="@mipmap/ic_launcher_art" />
+</adaptive-icon>

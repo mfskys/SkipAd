@@ -1,0 +1,12 @@
+{
+  "name": "skipad-tools",
+  "private": true,
+  "type": "module",
+  "description": "一次性小工具（如用官方算法生成 M3E 配色）。不参与 Android 构建，只在需要重新生成时 npm i。",
+  "dependencies": {
+    "@material/material-color-utilities": "^0.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

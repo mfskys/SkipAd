@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  广告跳过 · 无障碍服务配置
+
+  每一项都是必需的，改动前请先确认引擎侧是否有依赖：
+
+  · accessibilityEventTypes
+      只订阅「窗口切换」与「窗口内容变化」。其余事件（通知、焦点、触摸…）
+      一律不要 —— 事件越少，越省电，也越不容易误判。
+
+  · accessibilityFlags
+      flagReportViewIds           读到 viewId（规则里的 viewIdContains 依赖它）
+      flagIncludeNotImportantViews 部分 ROM 会把广告容器标成"不重要"，
+                                   不加这个 flag 就看不到它
+      flagRetrieveInteractiveWindows 能拿到多窗口（如分屏 / 弹窗）
+
+  · canRetrieveWindowContent
+      必须为 true：整个方案的基础就是读节点树。
+
+  · canPerformGestures
+      必须为 true：点击器的第三级回退是 dispatchGesture 落真实触摸，
+      部分广告 SDK 会忽略 performAction(ACTION_CLICK)，没有这个就跳不过去。
+
+  · notificationTimeout
+      事件合并窗口，100ms 是系统无障碍事件的常用取值。
+
+  · description
+      系统设置里显示给用户的说明，必须写清楚"为什么要开无障碍"。
+
+  · isAccessibilityTool
+      必须为 true。**Android 14+ 起，没声明为「无障碍工具」的服务读不到被标记为
+      "无障碍数据敏感"的界面**（[AccessibilityNodeInfo.isAccessibilityDataSensitive]，
+      典型例子就是承载**通知内容**的页面）。
+
+      ⚠️ 这不是理论风险，是实测踩到的（坑 #43）：「应用信息 → 通知」那一页
+      （`com.android.settings.Settings$AppNotificationSettingsActivity`）在没这条时
+      `rootInActiveWindow` **恒为 null**：页面明明开着（`Displayed +168ms`）、
+      `uiautomator dump` 读得到「允许通知」「悬浮通知」，而我们这边怎么等都读不到，
+      18 秒后整个任务被拖死 —— 用户看到的就是"卡住，然后莫名其妙回到软件里"。
+      声明之后同一页能正常读到（实测验证）。
+
+      ⚠️ 这条属性的语义是"本服务是给残障用户用的无障碍工具"（Google Play 对此有政策），
+      本项目的定位是**广告开关批处理工具**而非无障碍辅助工具 —— 但它确实全程
+      依赖无障碍、也确实是在替用户完成他们看不完/点不动的设置项。
+      若日后要上架应用商店，需要重新评估这一条。
+
+  · canRequestFilterKeyEvents（**只声明这一个，绝不要写 flagRequestFilterKeyEvents**）
+      「音量键紧急停止」要用它。自动化跑起来时本应用在后台，用户想喊停得先
+      切回本应用点「停止」，而那一刻脚本正在别的应用里点来点去 ——
+      音量键是任何界面下都摸得到的那个"刹车"。
+
+      ⚠️ 这同样是**敏感能力**：一旦生效，服务能收到**所有**按键，
+      系统无障碍设置页也会多一句"可以观察按键"的提示。
+      所以 AdSkipAccessibilityService.onKeyEvent 里只认音量键，
+      其余按键一律立刻 return，并且**不记录任何按键内容**。
+
+      ⚠️⚠️ **`flagRequestFilterKeyEvents` 千万不能写进 `accessibilityFlags`**。
+      写进去 = 服务从连上那一刻起**永远**接收所有按键，哪怕根本没在跑任务。
+      而本应用是"用完就扔在后台"的工具，进程很快会被 MIUI 判为
+      低优先级 / 可冻结 —— 于是用户**平时**按音量键时，系统得先把我们唤醒、
+      等我们回一句"不处理"，那一下就是肉眼可见的卡顿。
+
+      实测反馈原话："软件使用过后…没有删除…一直监听…加音量减音量就会很卡，
+      关闭（无障碍）了就不卡了" —— 关掉服务立刻不卡，正说明瓶颈在
+      "系统必须把每个按键同步投递给我们"这件事上，而不在我们的回调体里。
+
+      正确做法：`canRequestFilterKeyEvents` 只作**能力声明**（没有它运行时也开不了），
+      真正的 flag 交给 `AdSkipAccessibilityService.setKeyFilterEnabled`
+      在**会话开始 / 结束**时动态开关 —— 这个能力只在会话期间才有用途。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackAllMask"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRequestFilterKeyEvents="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/ad_skip_service_description"
+    android:isAccessibilityTool="true"
+    android:notificationTimeout="100"
+    android:settingsActivity="org.dpdns.mfsky.skipad.MainActivity" />

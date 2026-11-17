@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  圆形启动器图标（`android:roundIcon`）。与 `ic_launcher.xml` **内容完全一致** ——
+  实际画成什么形状由启动器决定，这里只是给"圆形图标"这个入口一个同样的定义。
+  做法的取舍说明见 `ic_launcher.xml`。
+--><adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_art" />
+    <foreground android:drawable="@mipmap/ic_launcher_art" />
+    <monochrome android:drawable="@mipmap/ic_launcher_art" />
+</adaptive-icon>

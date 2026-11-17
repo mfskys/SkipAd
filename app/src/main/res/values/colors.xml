@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      窗口启动底色（浅色）。
+
+      ⚠️ 取值必须尽量贴近 Compose 侧 `MaterialTheme.colorScheme.background`，
+      否则冷启动会看到"窗口底色 → Compose 背景"之间的一次跳变。
+      这里用的是 Material 3 baseline 的 surface 值（#FFFBFE）。
+
+      注意：若启用动态取色（Monet），实际背景色由壁纸决定、无法预知，
+      所以这里只能取"最接近的中性值"。要完全消除这种跳变，只能自定义
+      启动画面（引入 core-splashscreen），对小工具来说不值得 —— 本项目刻意没引入。
+    -->
+    <color name="window_background">#FFFBFE</color>
+</resources>

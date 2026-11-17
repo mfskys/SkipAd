@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      应用主题（深色版）。
+
+      ⚠️ 这个文件是**深色模式冷启动不闪白屏的关键**：系统在夜间模式下会自动选
+      values-night 里的资源，所以窗口底色会在 Compose 接管之前就已经是深色。
+
+      父子题必须换成非 .Light 的 `android:Theme.Material.NoActionBar` ——
+      否则窗口装饰（状态栏图标、默认文字色、对话框样式）仍然按浅色走，
+      即便 windowBackground 是对的，也会在别处冒出浅色元素。
+    -->
+    <style name="Theme.SkipAd" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

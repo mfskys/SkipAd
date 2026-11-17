@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      应用主题（浅色版）。
+
+      ⚠️ 这里的 windowBackground 不是装饰，它决定了**冷启动时、Compose 首帧画出之前**
+      用户看到什么。之前这个样式直接继承 `android:Theme.Material.Light`（写死浅色）
+      且没有 values-night 变体，于是深色模式下启动会先闪一下白屏 ——
+      现在改为引用 @color/window_background，由 values / values-night 各给一套值。
+
+      父子题仍然保留 `android:Theme.Material.*.NoActionBar`（平台主题，零依赖）：
+      应用的颜色体系完全由 Compose 的 MaterialExpressiveTheme 负责，
+      平台主题在这里只承担"窗口装饰 + 启动底色"这一件事。
+    -->
+    <style name="Theme.SkipAd" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

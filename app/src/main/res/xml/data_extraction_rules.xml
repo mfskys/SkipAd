@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  备份 / 换机迁移规则（**API 31+ 生效的那份**）。
+
+  ⚠️ 本项目 `minSdk = 33`，所以**只有这一份是真的在生效**；
+     同目录的 `backup_rules.xml` 是 API ≤ 30 用的，在本项目里是死配置（留着只为对称）。
+
+  ⚠️ 只排除 **`files/` 下的 logs 目录**：
+     `filesDir/logs/skipad.log*` 是逐条处理轨迹（含被处理的应用名），
+     换机 / 云备份没必要跟着走；
+     而 DataStore（主题、处理进度）**保留** —— 换机后进度不该丢。
+
+  ⚠️ 语义澄清：`allowBackup="true"` 是把这些数据交给**用户自己的**云备份/换机通道
+     （不是上传给开发者）。但"软件不联网、不收集不上传"这句承诺要经得起看，
+     所以轨迹类数据一律排除。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="logs" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="logs" />
+    </device-transfer>
+</data-extraction-rules>
